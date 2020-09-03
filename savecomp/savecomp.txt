@@ -1,0 +1,71 @@
+USE [GIOS]
+GO
+/****** Object:  StoredProcedure [GIOS].[GIOS_SaveCompetency]    Script Date: 3/13/2019 8:43:54 AM ******/
+SET ANSI_NULLS ON
+GO
+SET QUOTED_IDENTIFIER ON
+GO
+ALTER PROCEDURE [GIOS].[GIOS_SaveCompetency] 
+@generatedCompId int out,
+@compname varchar(100),
+@compid int,
+@Quesdata as xml
+
+AS
+BEGIN
+
+create table #Temp
+(
+   Question_Detail_Id int,
+   Ques_ID int,
+   Ques_Description varchar(100),
+   Comp_ID int ,
+   Ques_Display_IsRev bit,
+   Lev_ID int,
+   Active bit,
+   CreaterID varchar(100),
+   dteCreated datetime,
+   ModifierID varchar(100),
+   dteModified datetime
+   )
+   if (@compid IS NULL)
+   BEGIN
+   
+   insert into GIOS.GIOS_TCompetency([Comp_Name],[Active],[CreaterID],[dteCreated],[ModifierID],[dteModified])values(@compname,1,'Anonymous',SYSDATETIME(),'Anonymous',SYSDATETIME())
+   set @compid =  SCOPE_IDENTITY()
+   set @generatedCompId= SCOPE_IDENTITY()
+   END
+   else
+   BEGIN
+   update GIOS.GIOS_TCompetency set Comp_Name=@compname where Comp_ID=@compid;
+   set @generatedCompId=@compid
+   END
+insert into #Temp([Question_Detail_Id],[Ques_Description] ,[Comp_ID],[Ques_Display_IsRev],[Lev_ID],[Active],[CreaterID],[dteCreated],[ModifierID],[dteModified])   
+   SELECT
+   Data.Question.value('(Ques_ID)[1]','int'),
+   Data.Question.value('(Ques_Description)[1]','varchar(100)'),
+   @compid,
+   1,
+  1,
+   1,
+   Data.Question.value('(CreaterID)[1]','varchar(100)') ,
+   SYSDATETIME() ,
+   Data.Question.value('(CreaterID)[1]','varchar(100)'),
+   SYSDATETIME()
+   From
+   @Quesdata.nodes('/QuestionList/Question') As Data(Question)
+   select * from #Temp
+
+   MERGE INTO [GIOS].[GIOS_TQuestionair]   AS target  
+USING (SELECT * FROM #Temp as temp ) as source
+ON (target.Comp_ID = source.Comp_ID) and (target.Question_Detail_Id = source.Question_Detail_Id)
+
+WHEN  NOT MATCHED by target THEN
+INSERT  (Question_Detail_Id,Ques_Description,Comp_ID,Ques_Display_IsRev,Lev_ID,Active,CreaterID,dteCreated,ModifierID,dteModified)
+VALUES (source.Question_Detail_Id,source.Ques_Description,source.Comp_ID,source.Ques_Display_IsRev,source.Lev_ID,source.Active,source.CreaterID,SYSDATETIME(),source.ModifierID,SYSDATETIME())
+WHEN MATCHED THEN
+ update SET Active=1
+WHEN NOT MATCHED BY source and target.Comp_ID=@compid THEN
+ update SET Active=0;
+ --Delete;
+   END
